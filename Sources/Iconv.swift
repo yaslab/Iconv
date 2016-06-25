@@ -1,10 +1,10 @@
 import CIconv 
 
-struct IconvEncoding: RawRepresentable {
+public struct IconvEncoding: RawRepresentable {
     
-    var rawValue: String
+    public var rawValue: String
     
-    init(rawValue: String) {
+    public init(rawValue: String) {
         self.rawValue = rawValue
     }
     
@@ -12,56 +12,66 @@ struct IconvEncoding: RawRepresentable {
     // https://developer.apple.com/library/ios/documentation/System/Conceptual/ManPages_iPhoneOS/man3/iconv_open.3.html
     
     // Japanese
-    static let eucJP = IconvEncoding(rawValue: "EUC-JP")
-    static let shiftJIS = IconvEncoding(rawValue: "SHIFT_JIS")
-    static let cp932 = IconvEncoding(rawValue: "CP932")
-    static let iso2022JP = IconvEncoding(rawValue: "ISO-2022-JP")
+    public static let eucJP = IconvEncoding(rawValue: "EUC-JP")
+    public static let shiftJIS = IconvEncoding(rawValue: "SHIFT_JIS")
+    public static let cp932 = IconvEncoding(rawValue: "CP932")
+    public static let iso2022JP = IconvEncoding(rawValue: "ISO-2022-JP")
     
     // Full Unicode
-    static let utf8 = IconvEncoding(rawValue: "UTF-8")
-    static let utf16BE = IconvEncoding(rawValue: "UTF-16BE")
-    static let utf16LE = IconvEncoding(rawValue: "UTF-16LE")
-    static let utf32BE = IconvEncoding(rawValue: "UTF-32BE")
-    static let utf32LE = IconvEncoding(rawValue: "UTF-32LE")
+    public static let utf8 = IconvEncoding(rawValue: "UTF-8")
+    public static let utf16BE = IconvEncoding(rawValue: "UTF-16BE")
+    public static let utf16LE = IconvEncoding(rawValue: "UTF-16LE")
+    public static let utf32BE = IconvEncoding(rawValue: "UTF-32BE")
+    public static let utf32LE = IconvEncoding(rawValue: "UTF-32LE")
     
 }
 
-class Iconv {
+public enum IconvError: ErrorProtocol {
+    case iconv_open
+    case iconv(Int32)
+    case iconv_close
+}
+
+public class Iconv {
     
     private var cd: iconv_t
     private var closed = false
     
-    init?(to: IconvEncoding, from: IconvEncoding) {
-        guard let cd = iconv_open(to.rawValue, from.rawValue) else {
-            return nil
-        }
+    public init(to: IconvEncoding, from: IconvEncoding) throws {
+        let cd = iconv_open(to.rawValue, from.rawValue)!
         if cd == (iconv_t)(bitPattern: -1) {
-            return nil
+            throw IconvError.iconv_open
         }
         self.cd = cd
     }
     
     deinit {
-        _ = close()
+        _ = try? close()
     }
     
-    func convert(
+    public func convert(
         inBuffer: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>,
         inBytesLeft: UnsafeMutablePointer<Int>,
         outBuffer: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>,
         outBytesLeft: UnsafeMutablePointer<Int>)
+        throws
         -> Int
     {
-        return iconv(cd, inBuffer, inBytesLeft, outBuffer, outBytesLeft)
+        let ret = iconv(cd, inBuffer, inBytesLeft, outBuffer, outBytesLeft)
+        if ret == -1 {
+            throw IconvError.iconv(errno)
+        }
+        return ret
     }
     
-    func close() -> Bool {
-        var result = false
+    public func close() throws {
         if !closed {
-            result = (iconv_close(cd) == 0)
+            let ret = iconv_close(cd)
             closed = true
+            if ret == -1 {
+                throw IconvError.iconv_close
+            }
         }
-        return result
     }
     
 }

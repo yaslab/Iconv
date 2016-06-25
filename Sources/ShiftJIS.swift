@@ -8,10 +8,19 @@
 
 import Foundation
 
+private func getUTF32Encoding() -> IconvEncoding {
+    if CFByteOrderGetCurrent() == CFIndex(CFByteOrderBigEndian.rawValue) {
+        return .utf32BE
+    }
+    else {
+        return .utf32LE
+    }
+}
+
 public struct ShiftJIS: UnicodeCodec {
     
-    var iconvDecoder = Iconv(to: .utf32LE, from: .cp932)
-    static var iconvEncoder = Iconv(to: .cp932, from: .utf32LE)
+    var iconvDecoder = try? Iconv(to: getUTF32Encoding(), from: .shiftJIS)
+    static var iconvEncoder = try? Iconv(to: .shiftJIS, from: getUTF32Encoding())
     
     var buffer = [CodeUnit](repeating: 0, count: 2)
     var bufferPosition = 0
@@ -19,7 +28,7 @@ public struct ShiftJIS: UnicodeCodec {
     var nextScalar: UnicodeScalar? = nil
     
     public init() {
-        
+
     }
     
     // ShiftJIS to UnicodeScalar
@@ -52,11 +61,22 @@ public struct ShiftJIS: UnicodeCodec {
         var rlen = 8
         var pin: UnsafeMutablePointer<CChar>? = UnsafeMutablePointer<CChar>(buffer)
         var pout: UnsafeMutablePointer<CChar>? = UnsafeMutablePointer<CChar>(target)
+        var ret = 0
         
-        let ret = iconv.convert(inBuffer: &pin, inBytesLeft: &ilen, outBuffer: &pout, outBytesLeft: &rlen)
-        if (ret == -1) {
-            return .error
+        do {
+            ret = try iconv.convert(inBuffer: &pin, inBytesLeft: &ilen, outBuffer: &pout, outBytesLeft: &rlen)
         }
+        catch IconvError.iconv(let errno) {
+            switch errno {
+            case E2BIG, EILSEQ:
+                return .error
+            case EINVAL:
+                break
+            default:
+                break
+            }
+        }
+        catch { }
         
         let tmp = UnsafeMutablePointer<UInt32>(target)
         let scalar = UnicodeScalar(tmp[0])
@@ -66,7 +86,7 @@ public struct ShiftJIS: UnicodeCodec {
         if rlen == 0 {
             nextScalar = UnicodeScalar(tmp[1])
         }
-        if ret == 1 {
+        if ilen == 1 || ret == 1 {
             buffer[0] = buffer[1]
             newBufferPosition = 1
         }
@@ -92,9 +112,11 @@ public struct ShiftJIS: UnicodeCodec {
         var rlen = 8
         var pin: UnsafeMutablePointer<CChar>? = UnsafeMutablePointer<CChar>(buffer)
         var pout: UnsafeMutablePointer<CChar>? = UnsafeMutablePointer<CChar>(target)
-        
-        let ret = iconv.convert(inBuffer: &pin, inBytesLeft: &ilen, outBuffer: &pout, outBytesLeft: &rlen)
-        if (ret == -1) {
+
+        do {
+            _ = try iconv.convert(inBuffer: &pin, inBytesLeft: &ilen, outBuffer: &pout, outBytesLeft: &rlen)
+        }
+        catch {
             return
         }
         
